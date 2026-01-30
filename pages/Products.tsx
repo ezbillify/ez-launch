@@ -108,7 +108,7 @@ const Products: React.FC = () => {
       const lines = text.split('\n').filter(l => l.trim() !== '');
       const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
 
-      const newItems = lines.slice(1).map(line => {
+      const parsedItems = lines.slice(1).map(line => {
         const values = line.split(',').map(v => v.trim());
         const obj: any = {};
         headers.forEach((h, i) => {
@@ -123,11 +123,26 @@ const Products: React.FC = () => {
         return obj;
       }).filter(item => item.barcode && item.item_name);
 
+      // Deduplicate by barcode - keep only the first occurrence of each barcode
+      const seenBarcodes = new Set<string>();
+      const newItems = parsedItems.filter(item => {
+        if (seenBarcodes.has(item.barcode)) {
+          return false; // Skip duplicate barcode
+        }
+        seenBarcodes.add(item.barcode);
+        return true;
+      });
+
+      const duplicatesRemoved = parsedItems.length - newItems.length;
+
       if (newItems.length > 0) {
         const { error } = await supabase.from('product_master').upsert(newItems, { onConflict: 'barcode' });
         if (error) alert(error.message);
         else {
-          alert(`Successfully uploaded ${newItems.length} products`);
+          const msg = duplicatesRemoved > 0
+            ? `Successfully uploaded ${newItems.length} products (${duplicatesRemoved} duplicate barcode rows skipped)`
+            : `Successfully uploaded ${newItems.length} products`;
+          alert(msg);
           fetchInitialData();
           setShowBulkUpload(false);
         }
