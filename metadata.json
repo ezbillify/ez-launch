@@ -1,0 +1,8 @@
+
+{
+  "name": "EzLaunch Admin Panel",
+  "description": "A modern inventory onboarding dashboard for managing product masters, user activity, and scan analytics.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
