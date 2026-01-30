@@ -6,6 +6,7 @@ export interface ProductMaster {
   category: string;
   hsn_code?: string;
   mrp: number;
+  tax_rate: number;
   barcode: string;
   created_at: string;
   updated_at?: string;

@@ -36,7 +36,8 @@ const Products: React.FC = () => {
     category: '',
     hsn_code: '',
     unit: '',
-    mrp: 0
+    mrp: 0,
+    tax_rate: 0
   });
 
   useEffect(() => {
@@ -51,10 +52,11 @@ const Products: React.FC = () => {
         category: editingProduct.category || '',
         hsn_code: editingProduct.hsn_code || '',
         unit: editingProduct.unit || '',
-        mrp: editingProduct.mrp || 0
+        mrp: editingProduct.mrp || 0,
+        tax_rate: editingProduct.tax_rate || 0
       });
     } else {
-      setFormData({ item_name: '', barcode: '', category: '', hsn_code: '', unit: '', mrp: 0 });
+      setFormData({ item_name: '', barcode: '', category: '', hsn_code: '', unit: '', mrp: 0, tax_rate: 0 });
     }
   }, [editingProduct]);
 
@@ -116,6 +118,7 @@ const Products: React.FC = () => {
           if (h === 'hsn_code' || h === 'hsn') obj.hsn_code = values[i];
           if (h === 'unit') obj.unit = values[i];
           if (h === 'mrp') obj.mrp = Number(values[i]);
+          if (h === 'tax_rate' || h === 'tax' || h === 'gst') obj.tax_rate = Number(values[i]);
         });
         return obj;
       }).filter(item => item.barcode && item.item_name);
@@ -184,6 +187,7 @@ const Products: React.FC = () => {
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Unit</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">HSN Code</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">MRP</th>
+                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Tax %</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Barcode</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase text-right">Actions</th>
               </tr>
@@ -196,6 +200,7 @@ const Products: React.FC = () => {
                   <td className="px-6 py-4 text-sm font-bold">{p.unit || '-'}</td>
                   <td className="px-6 py-4 text-sm">{p.hsn_code || '-'}</td>
                   <td className="px-6 py-4 text-sm font-bold">₹{p.mrp}</td>
+                  <td className="px-6 py-4 text-sm font-bold">{p.tax_rate}%</td>
                   <td className="px-6 py-4"><code className="text-xs bg-slate-50 px-2 py-1 rounded font-mono">{p.barcode}</code></td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -231,6 +236,10 @@ const Products: React.FC = () => {
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-1">MRP (₹)</label>
                   <input required type="number" value={formData.mrp} onChange={(e) => setFormData({ ...formData, mrp: Number(e.target.value) })} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Tax Rate (%)</label>
+                  <input required type="number" value={formData.tax_rate} onChange={(e) => setFormData({ ...formData, tax_rate: Number(e.target.value) })} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -268,7 +277,7 @@ const Products: React.FC = () => {
           <div className="relative bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden p-8 text-center text-slate-800">
             <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4"><FileText size={32} /></div>
             <h2 className="text-xl font-bold mb-2">Bulk Product Upload</h2>
-            <p className="text-slate-500 mb-6 text-sm">Upload a CSV file with headers: <br /><code className="bg-slate-100 px-2 py-1 rounded">barcode, item_name, category, unit, mrp, hsn_code</code></p>
+            <p className="text-slate-500 mb-6 text-sm">Upload a CSV file with headers: <br /><code className="bg-slate-100 px-2 py-1 rounded">barcode, item_name, category, unit, mrp, tax_rate, hsn_code</code></p>
 
             <div className="flex flex-col gap-4">
               <label className="block w-full cursor-pointer">
@@ -281,8 +290,8 @@ const Products: React.FC = () => {
 
               <button
                 onClick={() => {
-                  const headers = 'barcode,item_name,category,unit,mrp,hsn_code\n';
-                  const sample = '890123456789,Sample Product,Groceries,Unit,199,2106\n';
+                  const headers = 'barcode,item_name,category,unit,mrp,tax_rate,hsn_code\n';
+                  const sample = '890123456789,Sample Product,Groceries,Unit,199,18,2106\n';
                   const blob = new Blob([headers + sample], { type: 'text/csv' });
                   const url = window.URL.createObjectURL(blob);
                   const a = document.createElement('a');
