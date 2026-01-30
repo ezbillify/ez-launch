@@ -104,48 +104,124 @@ const Products: React.FC = () => {
 
     const reader = new FileReader();
     reader.onload = async (event) => {
-      const text = event.target?.result as string;
-      const lines = text.split('\n').filter(l => l.trim() !== '');
-      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      try {
+        let text = event.target?.result as string;
 
-      const parsedItems = lines.slice(1).map(line => {
-        const values = line.split(',').map(v => v.trim());
-        const obj: any = {};
-        headers.forEach((h, i) => {
-          if (h === 'barcode') obj.barcode = values[i];
-          if (h === 'item_name' || h === 'name') obj.item_name = values[i];
-          if (h === 'category') obj.category = values[i];
-          if (h === 'hsn_code' || h === 'hsn') obj.hsn_code = values[i];
-          if (h === 'unit') obj.unit = values[i];
-          if (h === 'mrp') obj.mrp = Number(values[i]);
-          if (h === 'tax_rate' || h === 'tax' || h === 'gst') obj.tax_rate = Number(values[i]);
-        });
-        return obj;
-      }).filter(item => item.barcode && item.item_name);
-
-      // Deduplicate by barcode - keep only the first occurrence of each barcode
-      const seenBarcodes = new Set<string>();
-      const newItems = parsedItems.filter(item => {
-        if (seenBarcodes.has(item.barcode)) {
-          return false; // Skip duplicate barcode
+        // 1. Handle BOM (Byte Order Mark) often found in Excel CSVs
+        if (text.startsWith('\ufeff')) {
+          text = text.slice(1);
         }
-        seenBarcodes.add(item.barcode);
-        return true;
-      });
 
-      const duplicatesRemoved = parsedItems.length - newItems.length;
+        // 2. Auto-detect separator (comma or semicolon)
+        const firstLine = text.split(/\r?\n/)[0];
+        const commaCount = (firstLine.match(/,/g) || []).length;
+        const semiCount = (firstLine.match(/;/g) || []).length;
+        const separator = semiCount > commaCount ? ';' : ',';
 
-      if (newItems.length > 0) {
+        // 3. Robust State-Driven Parser (handles multi-line fields and escaped quotes)
+        const rows: string[][] = [];
+        let currentRow: string[] = [];
+        let currentValue = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < text.length; i++) {
+          const char = text[i];
+          const nextChar = text[i + 1];
+
+          if (char === '"') {
+            if (inQuotes && nextChar === '"') {
+              currentValue += '"'; // Escaped quote
+              i++;
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (char === separator && !inQuotes) {
+            currentRow.push(currentValue.trim());
+            currentValue = '';
+          } else if ((char === '\r' || char === '\n') && !inQuotes) {
+            if (currentValue !== '' || currentRow.length > 0) {
+              currentRow.push(currentValue.trim());
+              rows.push(currentRow);
+              currentValue = '';
+              currentRow = [];
+            }
+            if (char === '\r' && nextChar === '\n') i++; // Skip \n in \r\n
+          } else {
+            currentValue += char;
+          }
+        }
+        // Push last row if exists
+        if (currentValue !== '' || currentRow.length > 0) {
+          currentRow.push(currentValue.trim());
+          rows.push(currentRow);
+        }
+
+        if (rows.length < 2) {
+          alert("CSV file is empty or missing data rows.");
+          return;
+        }
+
+        // 4. Parse headers
+        const headers = rows[0].map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+
+        // 5. Build items
+        const parsedItems: any[] = [];
+        for (let i = 1; i < rows.length; i++) {
+          const values = rows[i];
+          const obj: any = {};
+          headers.forEach((h, idx) => {
+            let val = values[idx];
+            if (val === undefined) return;
+            val = val.trim();
+
+            if (h === 'barcode' || h === 'code' || h === 'upc' || h === 'ean') obj.barcode = val;
+            else if (h === 'itemname' || h === 'name' || h === 'productname' || h === 'item') obj.item_name = val;
+            else if (h === 'category' || h === 'cat' || h === 'department' || h === 'dept') obj.category = val;
+            else if (h === 'hsncode' || h === 'hsn') obj.hsn_code = val;
+            else if (h === 'unit' || h === 'uom' || h === 'measure') obj.unit = val;
+            else if (h === 'mrp' || h === 'price' || h === 'rate' || h === 'sellingprice') {
+              const numVal = parseFloat(val.replace(/[^\d.-]/g, ''));
+              obj.mrp = isNaN(numVal) ? 0 : numVal;
+            }
+            else if (h === 'taxrate' || h === 'tax' || h === 'gst' || h === 'taxpercentage') {
+              const numVal = parseFloat(val.replace(/[^\d.-]/g, ''));
+              obj.tax_rate = isNaN(numVal) ? 0 : numVal;
+            }
+          });
+
+          if (obj.barcode && obj.item_name) {
+            parsedItems.push(obj);
+          }
+        }
+
+        if (parsedItems.length === 0) {
+          alert("No valid products found. Ensure your CSV has 'barcode' and 'item_name' headers and data.");
+          return;
+        }
+
+        // 5. Deduplicate by barcode (keep the last occurrence in the file)
+        const uniqueItemsMap = new Map();
+        parsedItems.forEach(item => {
+          uniqueItemsMap.set(item.barcode, item);
+        });
+
+        const newItems = Array.from(uniqueItemsMap.values());
+        const duplicatesRemoved = parsedItems.length - newItems.length;
+
+        // 6. Upload to Supabase
         const { error } = await supabase.from('product_master').upsert(newItems, { onConflict: 'barcode' });
-        if (error) alert(error.message);
-        else {
-          const msg = duplicatesRemoved > 0
-            ? `Successfully uploaded ${newItems.length} products (${duplicatesRemoved} duplicate barcode rows skipped)`
-            : `Successfully uploaded ${newItems.length} products`;
-          alert(msg);
+
+        if (error) {
+          console.error('Upload error:', error);
+          alert(`Failed to upload: ${error.message}`);
+        } else {
+          alert(`Successfully uploaded ${newItems.length} unique products.${duplicatesRemoved > 0 ? ` Found and skipped ${duplicatesRemoved} duplicate barcodes in the file.` : ''}`);
           fetchInitialData();
           setShowBulkUpload(false);
         }
+      } catch (err: any) {
+        console.error('Parsing error:', err);
+        alert(`Error parsing CSV: ${err.message}`);
       }
     };
     reader.readAsText(file);
@@ -306,7 +382,7 @@ const Products: React.FC = () => {
               <button
                 onClick={() => {
                   const headers = 'barcode,item_name,category,unit,mrp,tax_rate,hsn_code\n';
-                  const sample = '890123456789,Sample Product,Groceries,Unit,199,18,2106\n';
+                  const sample = '12345678,Sample Product,Groceries,Pcs,199.50,18,2106\n';
                   const blob = new Blob([headers + sample], { type: 'text/csv' });
                   const url = window.URL.createObjectURL(blob);
                   const a = document.createElement('a');
